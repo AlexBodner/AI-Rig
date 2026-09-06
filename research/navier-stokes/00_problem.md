@@ -2,7 +2,19 @@
 
 Status legend used throughout this project (every claim carries exactly one): **PROVED-HERE** (complete proof written out, every step checkable), **KNOWN** (cited result, not reproved), **COMPUTED** (script plus printed output in the notes), **CONJECTURE**, **FAILED** (attempted, with the exact step where it breaks).
 
-Citation tags: **[checked via WebSearch]** means a WebSearch result snippet confirmed the item named in the tag (usually title, authors, venue, year; sometimes the headline statement). **[unverified]** means the item is from memory and could not be checked in this environment (arXiv, Wikipedia and most sites are blocked). When a tag says "venue checked; statement from memory" the bibliographic data was confirmed but the precise mathematical statement was not.
+## 0. Epistemic status of every citation in this project (read this first)
+
+**No full text of any cited paper was read anywhere in this project.** Not one. The session's egress policy blocks every route to the literature, and the proxy documentation instructs that policy denials be reported rather than worked around. Hosts confirmed blocked by direct request: `arxiv.org`, `export.arxiv.org`, `doi.org`, `pnas.org`, `link.springer.com`, `sciencedirect.com`, `jstor.org`, `scholar.google.com`, `ncbi.nlm.nih.gov`, `europepmc.org`, `api.semanticscholar.org`, `api.openalex.org`, `api.crossref.org`, `core.ac.uk`, `zenodo.org`, `hal.science`, `terrytao.wordpress.com`, `mathstodon.xyz`, `en.wikipedia.org`, and `x.com`. The only external information channel that works is a search tool returning titles, venues and short snippets.
+
+Therefore the citation tags mean exactly this, and nothing more:
+
+- **[checked via WebSearch]**: a search result confirmed the *existence* and *bibliographic data* of the item (title, authors, venue, year, sometimes pages), and occasionally reproduced one sentence of an abstract. It does **not** mean the theorem statement was verified, and it never means the hypotheses, the proof, or the exact scope were checked.
+- **[unverified]**: recalled from memory, with no confirmation of any kind.
+
+Two consequences are binding on everything below.
+
+1. **No claim in this project may rest on the precise hypotheses of a cited theorem**, because those hypotheses were never read. Where an argument does depend on them, that dependence must be stated explicitly at the point of use, and the resulting claim carries the status the weakest input allows.
+2. **A citation here is a pointer for a reader with library access, not evidence.** A reader checking this work should treat every [checked via WebSearch] item as an unverified attribution and re-check it against the actual paper. Some attributions will be wrong: the prior-art audit in `90_prior_art.md` already found two in `line_a_lyapunov.md` that survived a full referee round.
 
 Notation: `u = (u_1,u_2,u_3)` velocity, `p` pressure, `ν > 0` viscosity, `f` body force, `ω = curl u` vorticity, `∂_j = ∂/∂x_j`, `Δ = Σ_j ∂_j^2`, `div u = Σ_j ∂_j u_j`, `T^3 = R^3/Z^3` the unit torus, `T*` a putative first blowup time, `L^p`, `H^s`, `Ḃ^s_{p,q}` the usual Lebesgue, Sobolev and homogeneous Besov spaces, `L^q_t L^p_x` the mixed space-time norm.
 
