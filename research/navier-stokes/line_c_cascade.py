@@ -21,7 +21,7 @@ import numpy as np
 import sympy as sp
 from scipy.integrate import solve_ivp
 
-LAM = 2.0 ** 2.5
+LAM = 2.0**2.5
 R_K41 = 2.0 ** (-5.0 / 3.0)  # predicted transit-time ratio, constant-flux (K41) cascade
 SLOPE_K41 = -5.0 / 6.0  # predicted log2 front amplitude slope, constant-flux cascade
 R_FRONT = 0.25  # predicted transit-time ratio, front (Tao) cascade
@@ -60,15 +60,23 @@ def run(nu, s, n, amp=1.0, t_end=200.0, rtol=1e-9, atol=1e-16, esc_tol=1e-9):
     escaped.direction = 1
     t_grid = np.unique(np.clip(np.concatenate(([0.0], np.logspace(-14.0, np.log10(t_end), 1500))), 0.0, t_end))
     sol = solve_ivp(
-        rhs, (0.0, t_end), a0, method="Radau", jac=jac, args=(nu, s, n),
-        rtol=rtol, atol=atol, t_eval=t_grid, events=escaped,
+        rhs,
+        (0.0, t_end),
+        a0,
+        method="Radau",
+        jac=jac,
+        args=(nu, s, n),
+        rtol=rtol,
+        atol=atol,
+        t_eval=t_grid,
+        events=escaped,
     )
     a, t = sol.y, sol.t
     if len(sol.t_events[0]):  # append the exact event state: the t_eval grid stops just short of it
         a = np.concatenate((a, sol.y_events[0][0][:, None]), axis=1)
         t = np.concatenate((t, sol.t_events[0][:1]))
     kn = np.arange(n)
-    h1 = (4.0**kn[:, None] * a**2).sum(axis=0)
+    h1 = (4.0 ** kn[:, None] * a**2).sum(axis=0)
     dsp = 2.0 ** (2.0 * s * kn)[:, None] * a**2
     diss = 2.0 * nu * dsp.sum(axis=0)
     it = int(np.argmax(diss))
@@ -80,7 +88,7 @@ def run(nu, s, n, amp=1.0, t_end=200.0, rtol=1e-9, atol=1e-16, esc_tol=1e-9):
         "maxH1": float(h1.max()), "amin": float(a.min()), "E0": float(ener[0]),
         "Eend": float(ener[-1]), "tend": float(t[-1]), "nfev": int(sol.nfev),
         "t_esc": float(sol.t_events[0][0]) if len(sol.t_events[0]) else np.inf,
-    }
+    }  # fmt: skip
 
 
 def slope_fit(a_end, lo, hi):
@@ -115,7 +123,8 @@ def part1_exact():
     dE = sp.expand(2 * sum(a[i] * f[i] for i in range(n)))
     print(f"  (1a) inviscid energy: d/dt sum a_n^2 = {dE}   -> telescoping exact: {dE == 0}")
     dEv = sp.expand(2 * sum(a[i] * (f[i] - nu * lam ** (2 * i) * a[i]) for i in range(n)))
-    print(f"  (1b) viscous:  d/dt sum a_n^2 + 2*nu*sum lam^(2n) a_n^2 = {sp.simplify(dEv + 2 * nu * sum(lam ** (2 * i) * a[i] ** 2 for i in range(n)))}")
+    dis = 2 * nu * sum(lam ** (2 * i) * a[i] ** 2 for i in range(n))
+    print(f"  (1b) viscous: d/dt sum a_n^2 + 2 nu sum lam^(2n) a_n^2 = {sp.simplify(dEv + dis)}")
 
     # (1c) discrete scaling symmetry b_n(t) = mu a_{n+1}(sig t) with dissipation 2^{2 s n}
     mu, sig = sp.symbols("mu sig", positive=True)
@@ -127,10 +136,13 @@ def part1_exact():
     def eq_resid(idx, arr, nu_):  # residual of the model at shell idx for array arr
         am = arr[idx - 1] if idx >= 1 else 0
         ap = arr[idx + 1] if idx + 1 < len(arr) else 0
-        return -nu_ * two ** (2 * s * idx) * arr[idx] + two ** (lam_s * idx) * am**2 - two ** (lam_s * (idx + 1)) * arr[idx] * ap
+        return (
+            -nu_ * two ** (2 * s * idx) * arr[idx]
+            + two ** (lam_s * idx) * am**2
+            - two ** (lam_s * (idx + 1)) * arr[idx] * ap
+        )
 
     i0 = 3
-    lhs = sp.diff(mu * A[i0 + 1], t)
     rhs_shift = mu * sig * eq_resid(i0 + 1, A, nu)  # what dA_{n+1}/dt equals, times mu*sig
     B = [mu * A[j + 1] for j in range(n - 1)]
     want = eq_resid(i0, B, nu)
@@ -139,7 +151,9 @@ def part1_exact():
     print(f"  (1c) shift symmetry needs sig = {sol_ms[sig]}, mu = {sol_ms[mu]}")
     chk = sp.simplify(cond.subs(sol_ms))
     print(f"       residual after substitution (s free): {sp.simplify(chk.subs(s, 1))}  (at s=1)")
-    print(f"       at s = 1: sig = {sol_ms[sig].subs(s, 1)} = 1/4, mu = {sp.nsimplify(sol_ms[mu].subs(s, 1))} = 2^(1/2)")
+    print(
+        f"       at s = 1: sig = {sol_ms[sig].subs(s, 1)} = 1/4, mu = {sp.nsimplify(sol_ms[mu].subs(s, 1))} = 2^(1/2)"
+    )
     print("       -> t -> t/4 and a -> 2^(1/2) a per shell: exactly the L^2-normalized NS scaling.")
 
     # (1d) uniqueness of lam: sig=1/4 forced by 4^n, mu = sig*lam must equal 2^{1/2}
@@ -149,39 +163,54 @@ def part1_exact():
     # (1e) scale-invariant profile and constant-flux profile
     c, x = sp.symbols("c x", positive=True)
     prof = c * 2 ** (-sp.Rational(1, 2) * sp.Symbol("nn"))
-    print(f"  (1e) a_n = c 2^(-n/2) is the fixed point of the shift map: 2^(1/2)*c*2^(-(n+1)/2) = c*2^(-n/2): "
-          f"{sp.simplify(sp.sqrt(2) * prof.subs(sp.Symbol('nn'), sp.Symbol('nn') + 1) - prof) == 0}")
+    print(
+        f"  (1e) a_n = c 2^(-n/2) is the fixed point of the shift map: 2^(1/2)*c*2^(-(n+1)/2) = c*2^(-n/2): "
+        f"{sp.simplify(sp.sqrt(2) * prof.subs(sp.Symbol('nn'), sp.Symbol('nn') + 1) - prof) == 0}"
+    )
     nn = sp.Symbol("nn")
-    resid = (2 ** (lam_s * nn) * (c * 2 ** (-(nn - 1) / 2)) ** 2 - 2 ** (lam_s * (nn + 1)) * (c * 2 ** (-nn / 2)) * (c * 2 ** (-(nn + 1) / 2)))
+    resid = 2 ** (lam_s * nn) * (c * 2 ** (-(nn - 1) / 2)) ** 2 - 2 ** (lam_s * (nn + 1)) * (c * 2 ** (-nn / 2)) * (
+        c * 2 ** (-(nn + 1) / 2)
+    )
     print(f"       but it is NOT stationary: residual = {sp.simplify(sp.powsimp(sp.expand(resid), force=True))}")
-    flux = sp.simplify(2 ** (lam_s * (nn + 1)) * (c * 2 ** (-sp.Rational(5, 6) * nn)) ** 2 * (c * 2 ** (-sp.Rational(5, 6) * (nn + 1))))
-    print(f"  (1f) constant-flux profile a_n = c 2^(-5n/6): flux lam^(n+1) a_n^2 a_(n+1) = {sp.powsimp(flux, force=True)} (n-independent)")
+    flux = sp.simplify(
+        2 ** (lam_s * (nn + 1)) * (c * 2 ** (-sp.Rational(5, 6) * nn)) ** 2 * (c * 2 ** (-sp.Rational(5, 6) * (nn + 1)))
+    )
+    print(
+        f"  (1f) constant-flux profile a_n = c 2^(-5n/6): flux lam^(n+1) a_n^2 a_(n+1) = {sp.powsimp(flux, force=True)} (n-independent)"
+    )
 
     # (1g) exact self-similar blowup on the bi-infinite lattice: a_n = lam^{-n}/((lam^2-1)(T-t))
     T = sp.Symbol("T")
     cc = 1 / (lam**2 - 1)
-    an = lambda i: cc * lam ** (-i) / (T - t)
+
+    def an(i):
+        return cc * lam ** (-i) / (T - t)
+
     resid_ss = sp.simplify(sp.diff(an(nn), t) - (lam**nn * an(nn - 1) ** 2 - lam ** (nn + 1) * an(nn) * an(nn + 1)))
     print(f"  (1g) a_n(t) = lam^(-n)/((lam^2-1)(T-t)) on n in Z solves the inviscid model: residual = {resid_ss}")
-    print(f"       its energy sum_{{n in Z}} a_n^2 = +infinity (geometric divergence as n -> -infinity).")
+    print("       its energy sum_{n in Z} a_n^2 = +infinity (geometric divergence as n -> -infinity).")
 
 
 def part2_inviscid():
     print("\n" + "=" * 78)
     print("PART 2 -- inviscid model (nu = 0): finite-time front escape")
     print("=" * 78)
-    print("  N   T_esc(N)     max H^1     E_end/E_0      log2 slope inner (n=2..8)   outer (n=9..N-6)")
+    print("  N   T_esc(N)    H^1 just before escape   E/E_0    log2 slope n=2..8   log2 slope n=9..N-6")
     for n in (16, 20, 24, 28, 32):
         r = run(0.0, 1.0, n, t_end=5.0)
         si, wi = slope_fit(r["a"][:, -1], 2, 8)
         so, wo = slope_fit(r["a"][:, -1], 9, n - 6)
-        print(f" {n:3d}  {r['t_esc']:.7f}  {r['maxH1']:10.4g}  {r['Eend'] / r['E0']:.12f}      "
-              f"{si:8.4f} ({wi})              {so:8.4f} ({wo})")
+        print(
+            f" {n:3d}  {r['t_esc']:.7f}   {r['H1'][-2]:12.5g}   {r['Eend'] / r['E0']:.12f}   "
+            f"{si:8.4f} ({wi:2d})          {so:8.4f} ({wo:2d})"
+        )
     print(f"  reference slopes: constant-flux (K41) {SLOPE_K41:.4f}; front/Tao regime {SLOPE_FRONT:.4f};")
-    print(f"                    infinite-energy self-similar tail a_n ~ lam^(-n): {-2.5:.4f}")
-    print("  verdict: T_esc(N) is N-independent to 7 digits -> the front reaches n = infinity in finite")
-    print("           time (inviscid blowup). The profile at T_esc is NOT a single power law: an inner")
-    print("           range near -3/2, an outer range drifting towards -5/6, a precursor tail near -5/2.")
+    print(f"                    infinite-energy self-similar tail a_n ~ lam^(-n) (C4): {-2.5:.4f}")
+    print("  verdict: T_esc(N) converges to 7 digits as N grows -> the front reaches n = infinity in a")
+    print("           finite, truncation-independent time (inviscid front escape). The profile at that")
+    print("           instant is NOT a clean power law: the inner range sits near -3/2 while the outer")
+    print("           range drifts shallower as the truncation is extended, so whether H^1 stays finite")
+    print("           at T_esc is NOT decided by these runs (recorded as inconclusive in C6).")
 
 
 def part3_viscous():
@@ -195,8 +224,10 @@ def part3_viscous():
             for n in (24, 32):
                 r = run(nu, 1.0, n, amp=amp)
                 v = "front escapes (check N)" if r["escaped"] else f"dissipation wins (stall at n_d={r['n_d']})"
-                print(f" {nu:6.3g} {amp:5.1f} {n:3d} {r['tend']:9.4g} {r['maxH1']:10.4g} {r['n_d']:4d} "
-                      f"{r['amin']:10.2e} {r['Eend'] / r['E0']:10.3e}   {v}")
+                print(
+                    f" {nu:6.3g} {amp:5.1f} {n:3d} {r['tend']:9.4g} {r['maxH1']:10.4g} {r['n_d']:4d} "
+                    f"{r['amin']:10.2e} {r['Eend'] / r['E0']:10.3e}   {v}"
+                )
                 rows.append(r)
     print("  (min_n a_n >= -1e-15 confirms positivity is preserved: the class of Barbato-Morandin-Romito.)")
     print("\n  (nu, A) collapse check [C3]: b_n(t) = mu a_n(mu t) solves the model with (nu, A) -> (mu nu, mu A),")
@@ -204,9 +235,11 @@ def part3_viscous():
     for nu in (0.1, 0.03, 0.01):
         r1 = run(nu, 1.0, 32, amp=1.0)
         r2 = run(3.0 * nu, 1.0, 32, amp=3.0)
-        print(f"    (nu={nu:6.3g}, A=1): H^1max={r1['maxH1']:10.5g}, n_d={r1['n_d']:3d}   "
-              f"(nu={3 * nu:6.3g}, A=3): H^1max={r2['maxH1']:10.5g}, n_d={r2['n_d']:3d}   "
-              f"ratio={r2['maxH1'] / r1['maxH1']:7.4f} (predicted 9)")
+        print(
+            f"    (nu={nu:6.3g}, A=1): H^1max={r1['maxH1']:10.5g}, n_d={r1['n_d']:3d}   "
+            f"(nu={3 * nu:6.3g}, A=3): H^1max={r2['maxH1']:10.5g}, n_d={r2['n_d']:3d}   "
+            f"ratio={r2['maxH1'] / r1['maxH1']:7.4f} (predicted 9)"
+        )
     print("\n  inertial-range profile slope at the instant of peak dissipation (predicted -5/6 = -0.8333;")
     print("  the scale-invariant profile of C2 is -1/2, and a front cascade would give slope 0):")
     for nu in (0.03, 0.01, 0.003):
@@ -220,19 +253,30 @@ def part4_threshold():
     print("PART 4 -- dissipation-threshold scan: replace 4^n by 2^(2 s n)")
     print("=" * 78)
     print("  4a. s-scan at nu(s) = 2^(-14 max(2s-5/3, 2/15)), N = 24 and 32 (truncation control)")
-    print("    s      nu       n_d(N=24)  n_d(N=32)  escaped(24/32)   verdict")
+    print("    s      nu      n_d(24) n_d(32)  T_esc(24)  T_esc(32)  esc  verdict")
     for s in (0.70, 0.80, 0.8333, 0.90, 1.00, 1.10, 1.25, 1.35):
         nu = 2.0 ** (-14.0 * max(2.0 * s - 5.0 / 3.0, 2.0 / 15.0))
         ra = run(nu, s, 24)
         rb = run(nu, s, 32)
-        v = "front escapes" if (ra["escaped"] and rb["escaped"]) else (
-            "dissipation wins" if not (ra["escaped"] or rb["escaped"]) else "borderline (N-dependent)")
-        print(f" {s:6.4f} {nu:9.3g} {ra['n_d']:9d} {rb['n_d']:10d}   {str(ra['escaped'])[0]}/{str(rb['escaped'])[0]}"
-              f"             {v}")
+        if ra["escaped"] and rb["escaped"]:
+            conv = abs(rb["t_esc"] - ra["t_esc"]) < 0.01 * ra["t_esc"]
+            v = "front escapes, T_esc converged" if conv else "escapes at both N, T_esc NOT converged"
+        elif not (ra["escaped"] or rb["escaped"]):
+            v = "dissipation wins"
+        else:
+            v = "borderline (N-dependent)"
+        print(
+            f" {s:6.4f} {nu:8.3g} {ra['n_d']:6d} {rb['n_d']:7d} {ra['t_esc']:10.5f} {rb['t_esc']:10.5f}"
+            f"  {str(ra['escaped'])[0]}/{str(rb['escaped'])[0]}  {v}"
+        )
     print("\n  4b. stall-shell law   n_d = log2(1/nu)/(2s - 5/3) + const   (K41 balance; diverges at s = 5/6)")
     print("     s     nu-range          n_d values           fitted slope   predicted 1/(2s-5/3)")
-    grid = ((1.00, (0.3, 0.06, 0.012, 0.0024)), (1.10, (0.05, 5e-3, 5e-4, 5e-5)),
-            (1.25, (1e-2, 2e-4, 4e-6, 1e-7)), (1.40, (1e-3, 1e-5, 1e-7, 1e-9)))
+    grid = (
+        (1.00, (0.3, 0.06, 0.012, 0.0024)),
+        (1.10, (0.05, 5e-3, 5e-4, 5e-5)),
+        (1.25, (1e-2, 2e-4, 4e-6, 1e-7)),
+        (1.40, (1e-3, 1e-5, 1e-7, 1e-9)),
+    )
     svals, slopes = [], []
     for s, nus in grid:
         xs, ys, flag = [], [], ""
@@ -245,17 +289,19 @@ def part4_threshold():
         sl = float(np.polyfit(xs, ys, 1)[0])
         svals.append(s)
         slopes.append(sl)
-        print(f" {s:5.2f}  {nus[0]:8.3g}..{nus[-1]:8.3g}  {str(ys):22s} {sl:9.3f}      {1.0 / (2 * s - 5.0 / 3.0):9.3f}{flag}")
+        print(
+            f" {s:5.2f}  {nus[0]:8.3g}..{nus[-1]:8.3g}  {str(ys):22s} {sl:9.3f}      {1.0 / (2 * s - 5.0 / 3.0):9.3f}{flag}"
+        )
     aa, bb = np.polyfit(np.array(svals), 1.0 / np.array(slopes), 1)
     print(f"\n  linear fit of 1/slope against s:  1/slope = {aa:.4f} s + {bb:.4f}   (predicted 2 s - 5/3)")
     print(f"  numerically located blowup threshold s* = {-bb / aa:.4f}   (predicted 5/6 = {5 / 6:.4f})")
-    print(f"  Lions exponent for this model (energy criticality) s = 5/4 = 1.2500; s* is well below it.")
+    print("  Lions exponent for this model (energy criticality) s = 5/4 = 1.2500; s* is well below it.")
 
 
 def chain_rhs(_t, a, nu, s, m, cpat, nmod):
     """Chain of pairwise transfers, m modes per dyadic scale; c_{j+m} = lam * c_j (scale invariance)."""
     scale = np.arange(nmod) // m
-    c = LAM ** scale * np.asarray(cpat)[np.arange(nmod) % m]
+    c = LAM**scale * np.asarray(cpat)[np.arange(nmod) % m]
     cp = np.concatenate((c[1:], [0.0]))
     am = np.concatenate(([0.0], a[:-1]))
     ap = np.concatenate((a[1:], [0.0]))
@@ -274,13 +320,29 @@ def run_chain(nu, s, m, cpat, nscales, amp=1.0, t_end=200.0):
     escaped.terminal = True
     escaped.direction = 1
     t_grid = np.unique(np.clip(np.concatenate(([0.0], np.logspace(-14.0, np.log10(t_end), 1200))), 0.0, t_end))
-    sol = solve_ivp(chain_rhs, (0.0, t_end), a0, method="Radau", args=(nu, s, m, cpat, nmod),
-                    rtol=1e-9, atol=1e-16, t_eval=t_grid, events=escaped)
+    sol = solve_ivp(
+        chain_rhs,
+        (0.0, t_end),
+        a0,
+        method="Radau",
+        args=(nu, s, m, cpat, nmod),
+        rtol=1e-9,
+        atol=1e-16,
+        t_eval=t_grid,
+        events=escaped,
+    )
     dsp = 2.0 ** (2.0 * s * scale)[:, None] * sol.y**2
     it = int(np.argmax(dsp.sum(axis=0)))
     ener = (sol.y**2).sum(axis=0)
-    return {"n_d": int(scale[int(np.argmax(dsp[:, it]))]), "escaped": len(sol.t_events[0]) > 0,
-            "E0": float(ener[0]), "Eend": float(ener[-1]), "a": sol.y, "scale": scale, "it": it}
+    return {
+        "n_d": int(scale[int(np.argmax(dsp[:, it]))]),
+        "escaped": len(sol.t_events[0]) > 0,
+        "E0": float(ener[0]),
+        "Eend": float(ener[-1]),
+        "a": sol.y,
+        "scale": scale,
+        "it": it,
+    }
 
 
 def part5_gadget():
@@ -290,20 +352,29 @@ def part5_gadget():
     nmod = 7
     cs = sp.symbols(f"c1:{nmod + 1}", positive=True)
     a = sp.symbols(f"b0:{nmod}")
-    f = [(cs[j] * (a[j - 1] if j >= 1 else 0) ** 2 - (cs[j + 1] * a[j] * a[j + 1] if j + 1 < nmod else 0))
-         for j in range(nmod)]
+    f = [
+        (cs[j] * (a[j - 1] if j >= 1 else 0) ** 2 - (cs[j + 1] * a[j] * a[j + 1] if j + 1 < nmod else 0))
+        for j in range(nmod)
+    ]
     dE = sp.expand(2 * sum(a[j] * f[j] for j in range(nmod)))
     print(f"  (5a) trilinear form of ANY pairwise chain: d/dt sum_j a_j^2 = {dE}  (vanishes identically: {dE == 0})")
     print("       -> every such chain, with any coefficients c_j, has the exact energy identity of C1.")
-    print("\n  (5b) inertial-range slope per SCALE for m modes per scale, s = 1, nu = 0.003")
-    print("     m  pattern C_i              stall scale n_d   log2 slope per scale (predicted -0.8333)")
+    print("\n  (5b) inertial-range slope per SCALE for m modes per scale, s = 1; nu chosen per pattern so")
+    print("       that the stall scale lands inside the truncation (the O(1) offset is pattern-dependent)")
+    print("     m  pattern C_i           nu        stall scale n_d   log2 slope per scale (pred -0.8333)")
     for m, cpat in ((1, (1.0,)), (2, (1.0, 1.0)), (2, (8.0, 0.125)), (2, (0.125, 8.0)),
-                    (3, (1.0, 1.0, 1.0)), (3, (4.0, 1.0, 0.25))):
-        r = run_chain(0.003, 1.0, m, cpat, 26)
+                    (3, (1.0, 1.0, 1.0)), (3, (4.0, 1.0, 0.25))):  # fmt: skip
+        best = None
+        for nu in (3e-3, 1e-4, 3e-6, 1e-7, 3e-9):
+            r = run_chain(nu, 1.0, m, cpat, 26)
+            if best is None or abs(r["n_d"] - 13) < abs(best[1]["n_d"] - 13):
+                best = (nu, r)
+            if 8 <= r["n_d"] <= 20:
+                break
+        nu, r = best
         en = np.array([(r["a"][r["scale"] == n, r["it"]] ** 2).sum() for n in range(26)])
-        amp = np.sqrt(np.maximum(en, 1e-300))
-        sl, w = slope_fit(amp, 1, max(r["n_d"] - 1, 4))
-        print(f"     {m}  {str(tuple(cpat)):22s} {r['n_d']:8d}          {sl:8.4f}  ({w} scales)")
+        sl, w = slope_fit(np.sqrt(np.maximum(en, 1e-300)), 1, max(r["n_d"] - 1, 4))
+        print(f"     {m}  {str(tuple(cpat)):20s} {nu:9.3g} {r['n_d']:10d}          {sl:8.4f}  ({w} scales)")
     print("       -> the intra-scale pattern moves the O(1) offset only; the slope stays at the")
     print("          constant-flux value -5/6, never reaching the front value 0. See C10-C11.")
 
