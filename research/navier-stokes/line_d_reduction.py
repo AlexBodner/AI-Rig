@@ -306,126 +306,132 @@ def assemble(fields, c):
     return [sum(ci * f[i] for ci, f in zip(c, fields)) for i in range(3)]
 
 
+def lean_functionals(g, u, nu=NU):
+    """Only the pieces the optimizer needs: D, P, X^2, ||u||_3."""
+    absu = np.sqrt(sum(c**2 for c in u))
+    safe = np.maximum(absu, 1e-300)
+    du = [g.grad(c) for c in u]
+    gradsq = sum(du[i][j] ** 2 for i in range(3) for j in range(3))
+    grad_absu = [sum(u[i] * du[i][j] for i in range(3)) / safe for j in range(3)]
+    p = g.pressure(u)
+    xsq = (9.0 / 4.0) * g.integral(absu * sum(c**2 for c in grad_absu))
+    diss = 3.0 * g.integral(absu * gradsq) + (4.0 / 3.0) * xsq
+    press = 3.0 * g.integral(p * sum(u[j] * grad_absu[j] for j in range(3)))
+    return diss, press, xsq, g.integral(absu**3) ** (1.0 / 3.0)
+
+
 def theta(g, fields, c):
-    """Theta(u) = nu D(u) ||u||_3 / |P(u)|: the L^3 norm at which this field's amplitude
-    family first has d/dt ||u||_3^3 > 0. Scale-invariant in the amplitude."""
+    """Theta(u) = nu D(u) ||u||_3 / |P(u)|: the L^3 norm at which the amplitude family a*u
+    first has d/dt ||a u||_3^3 > 0. Scale-invariant in a (D is 3- and P is 4-homogeneous);
+    P is odd in u and D is even, so the sign of P costs nothing."""
     u = assemble(fields, c)
     nrm = np.sqrt(sum(g.integral(ci**2) for ci in u))
     if nrm < 1e-8:
         return 1e12
     u = [ci / nrm for ci in u]
-    f = functionals(g, u)
-    if abs(f["press"]) < 1e-14:
+    diss, press, _, l3 = lean_functionals(g, u)
+    if abs(press) < 1e-14:
         return 1e12
-    return NU * f["diss"] * f["L3"] / abs(f["press"])
+    return NU * diss * l3 / abs(press)
 
 
-def part3(g, rng, consts):
+def optimize_theta(gopt, kmax2, rng, nrestart, maxfev):
+    fields = basis_fields(gopt, kmax2=kmax2)
+    best, bestc = np.inf, None
+    for _ in range(nrestart):
+        c0 = rng.standard_normal(len(fields))
+        res = minimize(
+            lambda c: theta(gopt, fields, c),
+            c0,
+            method="Nelder-Mead",
+            options={"maxiter": maxfev, "maxfev": maxfev, "xatol": 1e-7, "fatol": 1e-9},
+        )
+        if res.fun < best:
+            best, bestc = res.fun, res.x
+    return len(fields), best, bestc
+
+
+def evaluate(gfine, kmax2, c):
+    fields = basis_fields(gfine, kmax2=kmax2)
+    u = assemble(fields, c)
+    nrm = np.sqrt(sum(gfine.integral(ci**2) for ci in u))
+    u = [ci / nrm for ci in u]
+    f = functionals(gfine, u)
+    if f["press"] < 0:
+        u = [-ci for ci in u]
+        f = functionals(gfine, u)
+    return u, f
+
+
+def part3(gopt, gfine, rng, consts):
     print()
     print("=" * 78)
-    print("PART 3 - bracketing the sharp threshold by direct optimization")
+    print(f"PART 3 - bracketing the sharp threshold by optimization (N={gopt.n} search, N={gfine.n} evaluation)")
     print("=" * 78)
-    results = []
-    for kmax2, nrestart, maxiter in ((1, 4, 900), (2, 3, 1500)):
-        fields = basis_fields(g, kmax2=kmax2)
-        m = len(fields)
-        best, bestc = np.inf, None
-        for _ in range(nrestart):
-            c0 = rng.standard_normal(m)
-            res = minimize(
-                lambda c: theta(g, fields, c),
-                c0,
-                method="Nelder-Mead",
-                options={"maxiter": maxiter, "maxfev": maxiter, "xatol": 1e-6, "fatol": 1e-8},
-            )
-            if res.fun < best:
-                best, bestc = res.fun, res.x
-        u = assemble(fields, bestc)
-        nrm = np.sqrt(sum(g.integral(ci**2) for ci in u))
-        u = [ci / nrm for ci in u]
-        f = functionals(g, u)
-        kstar = abs(f["press"]) / (f["X2"] * f["L3"])
-        results.append((kmax2, m, best, kstar, f["p3"] / f["L6sq"]))
-        print(f"basis |k|^2 <= {kmax2} ({m} real divergence-free modes): best Theta = {best:.6f} nu")
-
-    print()
-    print("| basis    | modes | min Theta (nu) | K(u) = |P|/(X^2 ||u||_3) | ||p||_3/||u||_6^2 |")
-    print("| -------- | ----- | -------------- | ------------------------ | ----------------- |")
-    for kmax2, m, best, kstar, cp in results:
-        print(f"| |k|^2<={kmax2}  | {m:>5d} | {best:>14.6f} | {kstar:>24.6f} | {cp:>17.6f} |")
-    thr_ub = min(r[2] for r in results)
-    k_lb = max(r[3] for r in results)
-    cp_lb = max(r[4] for r in results)
+    rows, bestc = [], {}
+    for kmax2, nrestart, maxfev in ((1, 3, 700), (2, 2, 1400)):
+        m, best_coarse, c = optimize_theta(gopt, kmax2, rng, nrestart, maxfev)
+        _, f = evaluate(gfine, kmax2, c)
+        thr = NU * f["diss"] * f["L3"] / f["press"]
+        kval = f["press"] / (f["X2"] * f["L3"])
+        rows.append((kmax2, m, best_coarse, thr, kval, f["p3"] / f["L6sq"]))
+        bestc[kmax2] = c
+    print("| basis     | modes | Theta at N=%2d | Theta at N=%2d | K = P/(X^2 ||u||_3) | ||p||_3/|| |u|^2 ||_3 |"
+          % (gopt.n, gfine.n))
+    print("| --------- | ----- | ------------- | ------------- | ------------------- | --------------------- |")
+    for kmax2, m, bc, thr, kval, cp in rows:
+        print(f"| |k|^2<={kmax2}   | {m:>5d} | {bc:>13.6f} | {thr:>13.6f} | {kval:>19.6f} | {cp:>21.6f} |")
+    thr_ub = min(r[3] for r in rows)
+    k_lb = max(r[4] for r in rows)
+    cp_lb = max(r[5] for r in rows)
     kub = 2.0 * consts["C_p_rig"] * consts["C_GN_rig"] ** (4.0 / 3.0)
     kub_s = 2.0 * consts["C_p_rig"] * consts["C_GN_sharp"] ** (4.0 / 3.0)
-    kap = (8.0 / 3.0) / kub
-    kap_s = (8.0 / 3.0) / kub_s
+    kap, kap_s = (8.0 / 3.0) / kub, (8.0 / 3.0) / kub_s
     print()
-    print(f"K* = sup_u |P|/(X^2 ||u||_3):  optimized lower bound {k_lb:.6f}  <=  K*  <= {kub:.6f} (proved, rigorous C_GN)")
-    print(f"                                                                    <= {kub_s:.6f} (proved, sharp C_GN)")
-    print(f"  looseness of the constant chain: {kub / k_lb:.0f}x (rigorous C_GN), {kub_s / k_lb:.0f}x (sharp C_GN)")
-    print(f"C_p = ||R_i R_j (u_i u_j)||_3 / || |u|^2 ||_3: de Leeuw lower bound {cp_lb:.6f} <= C_p <= {consts['C_p_rig']:.6f} (proved)")
+    print(f"K* = sup_u P/(X^2 ||u||_3):   {k_lb:.6f} (optimized lower bd)  <=  K*  <=  {kub:.6f} (proved, C_GN=C_S^(3/4))")
+    print(f"                                                                        <=  {kub_s:.6f} (proved, sharp C_GN)")
+    print(f"   looseness of the constant chain: {kub / k_lb:.0f}x (rigorous C_GN), {kub_s / k_lb:.0f}x (sharp C_GN)")
+    print(f"C_p = ||R_iR_j(u_iu_j)||_3 / || |u|^2 ||_3:  {cp_lb:.6f} (de Leeuw lower bd)  <=  C_p  <=  {consts['C_p_rig']:.6f} (proved)")
     print()
     print("BRACKET on the sharp threshold kappa_sharp = inf_u Theta(u):")
-    print(f"  proved     kappa = {kap:.6f} nu (rigorous C_GN) / {kap_s:.6f} nu (sharp C_GN)   <=  kappa_sharp")
-    print(f"  optimized                                                     kappa_sharp <= {thr_ub:.6f} nu (torus)")
-    return {"thr_ub": thr_ub, "K_lb": k_lb, "C_p_lb": cp_lb, "kap": kap, "kap_s": kap_s, "fields2": None}
+    print(f"   proved   {kap:.6f} nu (rigorous C_GN) / {kap_s:.6f} nu (sharp C_GN)  <=  kappa_sharp  <=  {thr_ub:.6f} nu (optimized, torus)")
+    return {"thr_ub": thr_ub, "K_lb": k_lb, "C_p_lb": cp_lb, "kap": kap, "kap_s": kap_s, "c": bestc}
 
 
-def part4(g, rng):
+def part4(gfine, c):
     print()
     print("=" * 78)
     print("PART 4 - an explicit field with d/dt ||u||_{L^3}^3 > 0 at nu = 1")
     print("=" * 78)
-    fields = basis_fields(g, kmax2=1)
-    m = len(fields)
-    best, bestc = np.inf, None
-    for _ in range(4):
-        c0 = rng.standard_normal(m)
-        res = minimize(
-            lambda c: theta(g, fields, c),
-            c0,
-            method="Nelder-Mead",
-            options={"maxiter": 900, "maxfev": 900, "xatol": 1e-6, "fatol": 1e-8},
-        )
-        if res.fun < best:
-            best, bestc = res.fun, res.x
-    u = assemble(fields, bestc)
-    nrm = np.sqrt(sum(g.integral(ci**2) for ci in u))
-    u = [ci / nrm for ci in u]
-    f = functionals(g, u)
-    if f["press"] < 0:
-        u = [-c for c in u]
-        f = functionals(g, u)
+    u, f = evaluate(gfine, 1, c)
     a_crit = NU * f["diss"] / f["press"]
-    print("v = unit-L^2 field on |k|^2 = 1 modes found in Part 3, signed so that P(v) > 0.")
-    print("Coefficients in the basis (cos/sin x 2 polarizations x k in {e1,e2,e3}), rounded:")
-    cc = bestc / np.linalg.norm(bestc)
-    print("  " + ", ".join(f"{v:+.4f}" for v in cc))
+    cc = c / np.linalg.norm(c)
+    print("v: unit-L^2 combination of the twelve |k| = 1 divergence-free modes found in Part 3,")
+    print("signed so that P(v) > 0. Coefficients (k = e1,e2,e3; two polarizations; cos then sin):")
+    print("  " + ", ".join(f"{v:+.5f}" for v in cc))
     print(f"  D(v) = {f['diss']:.6f}   P(v) = {f['press']:.6f}   ||v||_3 = {f['L3']:.6f}")
     print(f"  d/dt ||a v||_3^3 = -a^3 nu D(v) + a^4 P(v) > 0  iff  a > nu D(v)/P(v) = {a_crit:.6f}")
     print()
-    print("| a / a_crit |   ||a v||_3 |     -nu D + P (identity) |  direct d/dt int|u|^3 |  rel. err |")
-    print("| ---------- | ----------- | ------------------------ | --------------------- | --------- |")
+    print("| a / a_crit |  ||a v||_3 |      -nu D + P (identity) |   direct d/dt int|u|^3 |  rel. err |")
+    print("| ---------- | ---------- | ------------------------- | ---------------------- | --------- |")
     for r in (0.5, 1.0, 1.5, 3.0):
         a = r * a_crit
-        ua = [a * c for c in u]
-        ff = functionals(g, ua)
+        ff = functionals(gfine, [a * ci for ci in u])
         rel = abs(ff["lhs"] - ff["rhs"]) / max(abs(ff["lhs"]), abs(ff["rhs"]), 1e-30)
-        print(f"| {r:>10.2f} | {ff['L3']:>11.5f} | {ff['rhs']:>24.10e} | {ff['lhs']:>21.10e} | {rel:>9.2e} |")
+        print(f"| {r:>10.2f} | {ff['L3']:>10.5f} | {ff['rhs']:>25.10e} | {ff['lhs']:>22.10e} | {rel:>9.2e} |")
     print()
-    print("=> ||u||_{L^3} is NOT a Lyapunov functional for 3D Navier-Stokes at nu = 1.")
-    print(f"   For this family the L^3 norm starts to increase at ||u||_3 = {a_crit * f['L3']:.6f}.")
+    print("=> ||u||_{L^3} is NOT a Lyapunov functional for 3D Navier-Stokes at nu = 1;")
+    print(f"   for this family it starts to increase at ||u||_3 = {a_crit * f['L3']:.6f}.")
     return a_crit * f["L3"]
 
 
 def main():
     rng = np.random.default_rng(SEED)
     consts = part1()
-    g = Grid()
-    part2(g, rng)
-    part3(g, rng, consts)
-    part4(g, rng)
+    gfine = Grid(48)
+    part2(gfine, rng)
+    res = part3(Grid(24), gfine, rng, consts)
+    part4(gfine, res["c"][1])
     print()
     print("done.")
 
