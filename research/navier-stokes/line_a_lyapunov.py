@@ -776,7 +776,12 @@ def sup_norm_fluxes(sp_: Spectral, modes: dict, kind: str) -> dict:
         gu = grad_modes(modes, xs)  # gu[j, i] = d_j u_i
         S = (gu + gu.T) / 2
         F = fx @ S @ fx / mag_s
-    return {"x*": xs, "max": mag_s, "second_local_max": second, "G": G, "F": F, "gradnorm": gradnorm}
+    # Lipschitz bound for the magnitude of the target field: |f(x)-f(y)| <= (sum over all wavevectors of
+    # 2 pi |n| |f_n|) |x-y|; a grid of spacing h localises every global maximiser to within (sqrt(3)/2) h L
+    lip = 2.0 * sum(
+        TWO_PI * float(np.linalg.norm(n)) * float(np.linalg.norm(np.asarray(a))) for n, a in target_modes.items()
+    )
+    return {"x*": xs, "max": mag_s, "second_local_max": second, "G": G, "F": F, "gradnorm": gradnorm, "lip": lip}
 
 
 def fft_part():
@@ -834,6 +839,7 @@ def fft_part():
     # --- 2D positive control: planar fields have zero enstrophy Euler flux ---
     planar_modes = [(1, 0, 0), (0, 1, 0), (1, 1, 0), (1, -1, 0), (2, 1, 0), (1, 2, 0)]
     worst = 0.0
+    min_l3 = min_h12 = np.inf
     for _ in range(5):
         d = {}
         for n in planar_modes:
@@ -844,9 +850,12 @@ def fft_part():
         _, _, F2b = fluxes(Spectral(32), c, "L3", N_quad=32)
         worst = max(worst, abs(F2))
         _, _, Fh2 = fluxes(Spectral(32), c, "H12")
-        worst = max(worst, abs(F2))
+        min_l3 = min(min_l3, abs(F2b))
+        min_h12 = min(min_h12, abs(Fh2))
     lines.append(
-        f"2D control: max |enstrophy Euler flux| over 5 random planar fields = {worst:.2e} (zero: no stretching in 2D); L^3 and H^(1/2) fluxes are NOT zero in 2D (e.g. {F2b:.4f}, {Fh2:.4f})"
+        f"2D control: max |enstrophy Euler flux| over 5 random planar fields = {worst:.2e} (zero: no stretching in 2D); "
+        f"the L^3 and H^(1/2) Euler fluxes of the same five fields are NOT zero (smallest |L^3| = {min_l3:.4f}, "
+        f"smallest |H^(1/2)| = {min_h12:.4f}; last field: {F2b:.4f}, {Fh2:.4f})"
     )
 
     # --- candidate table on Gaussian-integer fields ---
@@ -869,6 +878,38 @@ def fft_part():
         for w in cands:
             Q, G, F = fluxes(S16, c, w, N_quad=32 if w in ("L3", "omega32", "Flog") else None)
             results[w].append((fi, Q, G, F, en))
+
+    # exact (Fraction) enstrophy Euler flux of the same 60 fields, cross-checked against the FFT values;
+    # the fields whose exact flux vanishes are identified and tested for the parity symmetry x -> -x (A3.2)
+    exact_flux = {}
+    kept = {fi for fi, _Q, _G, _F, _en in results["enstrophy"]}
+    for fi, coeffs in enumerate(fields):
+        if fi not in kept:
+            continue
+        w_ex = gaussian_integer_field(modes, coeffs)
+        f_ex, pw_ex = ExactField.inner(w_ex.laplacian().scale(-1), ExactField.euler_B(w_ex))
+        assert pw_ex == 3 and (2 * f_ex).denominator == 1
+        exact_flux[fi] = 2 * f_ex  # enstrophy Euler flux in units of (2 pi)^3
+    for fi, _Q, _G, F, _en in results["enstrophy"]:
+        assert abs(float(exact_flux[fi]) * TWO_PI**3 - F) < 1e-6 * max(1.0, abs(F)), (fi, exact_flux[fi], F)
+    f_l3 = {fi: F for fi, _Q, _G, F, _en in results["L3"]}
+    zero_fields = sorted(fi for fi, v in exact_flux.items() if v == 0)
+    vals = sorted(int(v) for v in exact_flux.values())
+    parities = []
+    for fi in zero_fields:
+        cs = fields[fi]
+        real_only = all(a[1] == 0 and b[1] == 0 for a, b in cs)
+        imag_only = all(a[0] == 0 and b[0] == 0 for a, b in cs)
+        par = "even (all coefficients real)" if real_only else "odd (all coefficients imaginary)"
+        if not (real_only or imag_only):
+            par = "neither even nor odd"
+        parities.append(f"#{fi}: {par} under x -> -x, L^3 Euler flux = {f_l3[fi]:.4f}")
+    lines.append("")
+    lines.append(
+        f"Exact enstrophy Euler fluxes of the {len(exact_flux)} fields (Fraction arithmetic, units of (2 pi)^3; every value "
+        f"agrees with the FFT flux to 1e-6 relative): integers in [{vals[0]}, {vals[-1]}]; exactly zero for "
+        + "; ".join(parities)
+    )
     lines.append("")
     lines.append(
         "| candidate | fields with nonzero Euler flux | best field | Q(u) | heat flux G | Euler flux F | ‖u‖_2 | A* = -G/F | A* ‖u‖_2 |"
@@ -929,6 +970,7 @@ def fft_part():
     )
     lines.append("|---|---|---|---|---|---|---|---|---|")
     sup_fields = []
+    lip_notes = []
     for kind, name in (("u", "Linf_u"), ("w", "Linf_omega")):
         bestk = None
         for fi in range(min(30, len(fields))):
@@ -951,9 +993,18 @@ def fft_part():
             f"| {name} | #{fi} (sign {sign:+d}) | ({xs}) | {r['max']:.6g} | {r['second_local_max']:.6g} | {r['gradnorm']:.1e} | {r['G']:.6g} | {sign * r['F']:.6g} | {Astar:.6g} |"
         )
         sup_fields.append(f"  {name}: field #{fi}, sign {sign:+d}: " + " ".join(str(cc) for cc in fields[fi]))
+        gap = r["max"] - r["second_local_max"]
+        need = np.sqrt(3.0) * r["lip"] / (2.0 * gap)
+        lip_notes.append(
+            f"  {name}: Lipschitz bound sum_n 2 pi |n| |f_n| = {r['lip']:.1f}, gap (max - second grid local max) = {gap:.4g}; "
+            f"localising every global maximiser to the cluster around x* by this bound alone would need a grid with "
+            f"N > {need:.0f} (the run uses 48; global maximality is therefore not certified)"
+        )
 
     lines.append("Coefficients of the sup-norm fields (same modes and bases as above):")
     lines.extend(sup_fields)
+    lines.append("Grid resolution that a Lipschitz certificate of global maximality would require:")
+    lines.extend(lip_notes)
 
     # --- A5: F(|u|) = |u|^2 log(1+|u|): Pi(w), the amplitude scan on the torus, and the asymptotics ---
     fi, sign = best_fields["Flog"]
