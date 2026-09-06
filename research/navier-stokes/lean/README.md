@@ -6,7 +6,7 @@ This directory contains one Lean file, `Certificates.lean`, which re-proves insi
 
 ## What is kernel-checked
 
-Fifty-six theorems, all proved by `decide` (kernel evaluation of closed arithmetic). They fall into five groups.
+Sixty-three theorems, all proved by `decide` (kernel evaluation of closed arithmetic). They fall into five groups.
 
 **1. The A2 triad certificate (3D).** The triad is `k = (1,0,0)`, `p = (0,1,1)`, `q = (-1,-1,-1)`; the two Gaussian-integer amplitude choices are copied from A2 of the notes and from the `choices` list of `exact_part` in the script. Lean recomputes the energy transfers from the amplitudes — it does not take them as data:
 
@@ -23,13 +23,15 @@ Fifty-six theorems, all proved by `decide` (kernel evaluation of closed arithmet
 
 **2. The 2D negative control.** Without it the 3D determinant means nothing, so it is formalized on the same footing: planar triad `k = (1,0,0)`, `p = (0,1,0)`, `q = (-1,-1,0)`, planar fields, same recomputation. `planarA_transfers` and `planarB_transfers` give `(1,-1,0)` and `(7,-7,0)`; `planarA_transfer_sum`, `planarB_transfer_sum` give the energy sum `0`; `planarA_enstrophy_conserved`, `planarB_enstrophy_conserved` give the *extra* 2D constraint `sum (abs n)^2 T_n = 0`; and `planar_det_zero` gives the vanishing determinant `det [-1 0; -7 0] = 0`. The contrast between `triad_det_ne_zero` and `planar_det_zero` is the mechanism the notes point at: in 3D the enstrophy constraint is lost.
 
-**3. The A3.1 enstrophy budget.** Also recomputed from the amplitudes, in the units of the notes: `triadA_budget` gives `(energy, enstrophy, Euler flux, heat flux) = (14, 28, 4, -128)` (that is, `int abs(u)^2 = 14`, `int abs(omega)^2 = 28 (2 pi)^2`, Euler flux `4 (2 pi)^3`, heat flux `-128 (2 pi)^4`), and `triadB_budget` gives `(26, 58, 4, -292)`. The Euler flux is obtained through the notes' own formula `F_m = 4 sum m(n) T_n` with symbol `m(n) = (abs n)^2`, so it is a consequence of the transfers of group 1 rather than a separate datum; the agreement of the resulting `4` with the script's independently computed `2 <-Lap u, B(u,u)>` is evidence that the transcribed definition is the intended one. `energy_flux_zero` gives the energy Euler flux `0` (K5) for all four fields. With `A = a (2 pi)`, `ensRate` is the initial enstrophy rate in units of `(2 pi)^6`; `triadA_threshold/above/below` check that it vanishes at `a = 32` (that is `A* = 64 pi`) and changes sign across it, and `triadB_threshold/above/below` do the same at `a = 73` (`A* = 146 pi`).
+**3. The A3.1 enstrophy budget.** Also recomputed from the amplitudes, in the units of the notes: `triadA_budget` gives `(energy, enstrophy, Euler flux, heat flux) = (14, 28, 4, -128)` (that is, `int abs(u)^2 = 14`, `int abs(omega)^2 = 28 (2 pi)^2`, Euler flux `4 (2 pi)^3`, heat flux `-128 (2 pi)^4`), and `triadB_budget` gives `(26, 58, 4, -292)`. The Euler flux is obtained through the notes' own formula `F_m = 4 sum m(n) T_n` with symbol `m(n) = (abs n)^2`, so it is a consequence of the transfers of group 1 rather than a separate datum; the agreement of the resulting `4` with the script's independently computed `2 <-Lap u, B(u,u)>` is evidence that the transcribed definition is the intended one. `energy_flux_zero` gives the energy Euler flux `0` (K5) for all four fields. `triadA_hhalf_coeffs` and `triadB_hhalf_coeffs` give the shell decomposition of the `Hdot^{1/2}` Euler flux, `(-4, 4, 0)` and `(4, -12, 8)` as coefficients of `(2 pi)^2 sqrt 1`, `(2 pi)^2 sqrt 2`, `(2 pi)^2 sqrt 3` — the notes' `(2 pi)^2 (-4 + 4 sqrt 2)` for choice 1; the irrational combination itself is beyond core Lean, which has no reals, but its integer coefficients are not. With `A = a (2 pi)`, `ensRate` is the initial enstrophy rate in units of `(2 pi)^6`; `triadA_threshold/above/below` check that it vanishes at `a = 32` (that is `A* = 64 pi`) and changes sign across it, and `triadB_threshold/above/below` do the same at `a = 73` (`A* = 146 pi`).
 
-**4. `L^4` thresholds (data, not recomputation).** The `L^4` fluxes need the pressure and are *not* recomputed in Lean; they enter as the script's exact output. What is checked is the rational arithmetic that produces the threshold amplitude the notes quote: `thresholdOK F G a*` is `F a* = -G` by cross-multiplication of integer pairs (core Lean 4.15 has no usable `Rat` numerals). `l4_threshold_choice1` checks `(32/9)(1305/2) = 2320`, that is `A* = 1305 pi` for the field `-u` of choice 1; `l4_threshold_choice2` checks `(1280/9)(12987/160) = 11544`; `ens_threshold_rational` and `ens_threshold_rational2` re-check the two enstrophy thresholds in the same rational format. `l4RateA_below` and `l4RateA_above` exhibit the sign change of the `L^4` rate at integer amplitudes `652` and `653` straddling `a* = 652.5`.
+**4. `L^4` thresholds (data, not recomputation).** The `L^4` fluxes need the pressure and are *not* recomputed in Lean; they enter as the script's exact output. What is checked is the rational arithmetic that produces the threshold amplitude the notes quote: `thresholdOK F G a*` is `F a* = -G` by cross-multiplication of integer pairs (core Lean 4.15 has no usable `Rat` numerals), with each pair checked to have a positive denominator so that it really denotes a rational. `l4_threshold_choice1` checks `(32/9)(1305/2) = 2320`, that is `A* = 1305 pi` for the field `-u` of choice 1; `l4_threshold_choice2` checks `(1280/9)(12987/160) = 11544`; `ens_threshold_rational` and `ens_threshold_rational2` re-check the two enstrophy thresholds in the same rational format. `l4RateA_below` and `l4RateA_above` exhibit the sign change of the `L^4` rate at integer amplitudes `652` and `653` straddling `a* = 652.5`.
 
 **5. The A6 certificate.** The five matrices `N(w^(m))` need the pressure too, so they are data, taken from the script. `A6rows_value` checks that the coordinate rows `(N11, N22, N12, N13, N23)` are exactly the five rows printed in A6(4) of the notes; `A6_symmetric` checks symmetry; `A6_traceless` checks `tr N(w) = 0` for each; `A6_det` and `A6_det_ne_zero` check `det = 7936 != 0`; and `A6_left_inverse` checks `A6adj * A6rows = 7936 I`, exhibiting an explicit integer matrix that becomes a left inverse after dividing by `7936`.
 
 Two remarks on group 5. The trace check is not a restatement of the coordinate convention: the notes print only the five coordinates, and `N33` (which the trace needs) is *not* in the notes — it was obtained by rerunning the script's exact machinery, so `A6_traceless` genuinely tests that third, independently computed integral against the two printed diagonal entries. And a deliberate mutation test confirms this: changing the `N33` entry of `N3` from `-6` to `-5` breaks `A6_traceless` and nothing else.
+
+The data layout is pinned down too, since `det`, `dotL` and `matMul` read missing entries as `0`: `A6mats_shape`, `A6rows_shape`, `A6adj_shape`, `triadMatrix_shape` and `planarMatrix_shape` check that every matrix really has the rows and columns its determinant or product assumes.
 
 The determinant function `det` is pinned down by seven sanity theorems (`det_id2`, `det_id3`, `det_id5`, `det_repeated_row`, `det_swap`, `det_2x2`, `det_3x3`) before it is used, since a kernel-checked proof about a wrongly defined determinant would prove nothing. The same `det` is used for the `2 x 2` triad matrices and the `5 x 5` A6 matrix.
 
@@ -47,7 +49,7 @@ This is the important half of this README. The Lean file is a certificate checke
 
 ## Why `decide` only, and no axioms
 
-All 56 proofs use `decide` (or would use `rfl`): the Lean kernel evaluates the closed arithmetic term and checks it reduces to `true`. Three alternatives are deliberately avoided.
+All 63 proofs use `decide` (or would use `rfl`): the Lean kernel evaluates the closed arithmetic term and checks it reduces to `true`. Three alternatives are deliberately avoided.
 
 - `native_decide` would compile the computation and trust the compiled code, introducing the axiom `Lean.ofReduceBool` — precisely the "trust me, it ran" that this exercise is meant to eliminate.
 - `omega` (linear integer arithmetic) would let us state the spanning lemma for all integer vectors, but its proof terms depend on `propext` and `Quot.sound`. Those are standard parts of Lean's logic, not classical choice, and relying on them would be perfectly respectable — but the stronger and simpler claim "depends on no axioms at all" is available here, so it is what the file delivers.
@@ -74,9 +76,9 @@ cd research/navier-stokes/lean
 lean Certificates.lean
 ```
 
-`lean Certificates.lean` must exit `0` and print nothing except the axiom audit below — no errors, no warnings. Any failure of any certificate would surface as `error: tactic 'decide' proved that the proposition ... is false`.
+`lean Certificates.lean` must exit `0`; on Lean 4.15.0 it prints exactly the 63 audit lines below and nothing else. Any failure of any certificate would surface as `error: tactic 'decide' proved that the proposition ... is false`.
 
-To confirm the theorems are load-bearing rather than vacuous, mutate the file in a scratch copy: changing one Gaussian-integer amplitude of `triadA` (say `a_p = (1, i, -i)` to `(1, i, i)`) breaks eight theorems including `triadA_divFree`, `triadA_transfers` and `triadA_budget`, and changing `N33` of `N3` breaks `A6_traceless` alone.
+To confirm the theorems are load-bearing rather than vacuous, mutate the file in a scratch copy: changing one Gaussian-integer amplitude of `triadA` (say `a_p = (1, i, -i)` to `(1, i, i)`) breaks nine theorems including `triadA_divFree`, `triadA_transfers` and `triadA_budget`, and changing `N33` of `N3` breaks `A6_traceless` alone.
 
 ## Axiom audit (verbatim output)
 
@@ -104,6 +106,7 @@ The complete output of `lean Certificates.lean`, one line per theorem:
 'NSCert.triadA_proj_agrees' does not depend on any axioms
 'NSCert.triadB_proj_agrees' does not depend on any axioms
 'NSCert.triadMatrix_value' does not depend on any axioms
+'NSCert.triadMatrix_shape' does not depend on any axioms
 'NSCert.triad_det' does not depend on any axioms
 'NSCert.triad_det_ne_zero' does not depend on any axioms
 'NSCert.planar_triad_sums_to_zero' does not depend on any axioms
@@ -117,10 +120,13 @@ The complete output of `lean Certificates.lean`, one line per theorem:
 'NSCert.planarA_enstrophy_conserved' does not depend on any axioms
 'NSCert.planarB_enstrophy_conserved' does not depend on any axioms
 'NSCert.planarMatrix_value' does not depend on any axioms
+'NSCert.planarMatrix_shape' does not depend on any axioms
 'NSCert.planar_det_zero' does not depend on any axioms
 'NSCert.triadA_budget' does not depend on any axioms
 'NSCert.triadB_budget' does not depend on any axioms
 'NSCert.energy_flux_zero' does not depend on any axioms
+'NSCert.triadA_hhalf_coeffs' does not depend on any axioms
+'NSCert.triadB_hhalf_coeffs' does not depend on any axioms
 'NSCert.triadA_threshold' does not depend on any axioms
 'NSCert.triadA_above' does not depend on any axioms
 'NSCert.triadA_below' does not depend on any axioms
@@ -136,7 +142,10 @@ The complete output of `lean Certificates.lean`, one line per theorem:
 'NSCert.A6_symmetric' does not depend on any axioms
 'NSCert.A6_traceless' does not depend on any axioms
 'NSCert.A6rows_value' does not depend on any axioms
+'NSCert.A6mats_shape' does not depend on any axioms
+'NSCert.A6rows_shape' does not depend on any axioms
 'NSCert.A6_det' does not depend on any axioms
 'NSCert.A6_det_ne_zero' does not depend on any axioms
+'NSCert.A6adj_shape' does not depend on any axioms
 'NSCert.A6_left_inverse' does not depend on any axioms
 ```

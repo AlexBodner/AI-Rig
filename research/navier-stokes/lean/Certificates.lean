@@ -238,6 +238,8 @@ def triadMatrix : List (List Int) :=
   [[transfer triadA p3, transfer triadA q3], [transfer triadB p3, transfer triadB q3]]
 
 theorem triadMatrix_value : triadMatrix = [[1, 0], [-3, 2]] := by decide
+theorem triadMatrix_shape :
+    triadMatrix.length = 2 ∧ triadMatrix.all (fun r => decide (r.length = 2)) = true := by decide
 theorem triad_det : det 2 triadMatrix = 2 := by decide
 theorem triad_det_ne_zero : det 2 triadMatrix ≠ 0 := by decide
 
@@ -289,6 +291,8 @@ def planarMatrix : List (List Int) :=
   [[transfer planarA p2, transfer planarA q2], [transfer planarB p2, transfer planarB q2]]
 
 theorem planarMatrix_value : planarMatrix = [[-1, 0], [-7, 0]] := by decide
+theorem planarMatrix_shape :
+    planarMatrix.length = 2 ∧ planarMatrix.all (fun r => decide (r.length = 2)) = true := by decide
 theorem planar_det_zero : det 2 planarMatrix = 0 := by decide
 
 /-! ## A3.1: the exact enstrophy budget of the triad fields
@@ -310,6 +314,22 @@ theorem triadB_budget :
 theorem energy_flux_zero :
     (energyEulerFlux triadA, energyEulerFlux triadB, energyEulerFlux planarA, energyEulerFlux planarB)
       = ((0 : Int), (0 : Int), (0 : Int), (0 : Int)) := by decide
+
+/-- The `Hdot^{1/2}` Euler flux has symbol `m(n) = 2 pi |n|`, which is not rational; but its
+decomposition over the three shells is integral.  `hHalfCoeff F j` is the coefficient of
+`(2 pi)^2 sqrt(j)` in that flux, i.e. `4 T_n` summed over the modes with `|n|^2 = j`.  The
+notes' value for choice 1 is `(2 pi)^2 (-4 + 4 sqrt 2)`; the irrational combination itself
+is out of reach of core Lean (there are no reals), the integer coefficients are not. -/
+def hHalfCoeff (F : Field) (j : Int) : Int :=
+  eulerFluxSymbol F (fun n => if normSqZ n = j then 1 else 0)
+
+theorem triadA_hhalf_coeffs :
+    (hHalfCoeff triadA 1, hHalfCoeff triadA 2, hHalfCoeff triadA 3) = ((-4 : Int), (4 : Int), (0 : Int)) := by
+  decide
+
+theorem triadB_hhalf_coeffs :
+    (hHalfCoeff triadB 1, hHalfCoeff triadB 2, hHalfCoeff triadB 3) = ((4 : Int), (-12 : Int), (8 : Int)) := by
+  decide
 
 /-- With `A = a (2 pi)`, `d/dt integral |omega|^2` at `t = 0` equals `(2 pi)^6` times
 `ensRate F a` (notes, A3.1: `-128 (2 pi)^4 A^2 + 4 (2 pi)^3 A^3`). -/
@@ -343,8 +363,13 @@ deriving DecidableEq, Repr
 def qmul (a b : Rat0) : Rat0 := ⟨a.num * b.num, a.den * b.den⟩
 def qneg (a : Rat0) : Rat0 := ⟨-a.num, a.den⟩
 def qEqB (a b : Rat0) : Bool := a.num * b.den == b.num * a.den
-/-- `F * a* = -G`, i.e. the Navier-Stokes rate `F A^{d+1} + G A^d` vanishes at `A = a* (2 pi)`. -/
-def thresholdOK (F G astar : Rat0) : Bool := qEqB (qmul F astar) (qneg G)
+/-- A pair of integers denotes a rational only when its denominator is positive; without this
+guard `qEqB` would accept degenerate pairs such as `(0,0)`. -/
+def qWF (a : Rat0) : Bool := decide (a.den > 0)
+/-- `F * a* = -G`, i.e. the Navier-Stokes rate `F A^{d+1} + G A^d` vanishes at `A = a* (2 pi)`.
+The three inputs are checked to be well formed, so this is a genuine rational identity. -/
+def thresholdOK (F G astar : Rat0) : Bool :=
+  qWF F && qWF G && qWF astar && qEqB (qmul F astar) (qneg G)
 
 /-- Enstrophy, choice 1: `F = 4`, `G = -128`, `a* = 32` (`A* = 64 pi`), consistent with `ensRate`. -/
 theorem ens_threshold_rational : thresholdOK ⟨4, 1⟩ ⟨-128, 1⟩ ⟨32, 1⟩ = true := by decide
@@ -402,6 +427,13 @@ theorem A6rows_value :
     A6rows = [[-6, 4, 5, 6, 5], [-10, 4, -1, 4, -1], [2, 4, -2, -6, -10], [-2, -2, -1, -2, -7],
       [-6, -10, 12, 10, 14]] := by decide
 
+/-- Shape checks: `det`, `dotL` and `matMul` read missing entries as `0`, so the data layer
+is pinned down explicitly -- five rows of five, and `3 x 3` for the matrices they come from. -/
+theorem A6mats_shape :
+    A6mats.all (fun m => decide (m.length = 3) && m.all (fun r => decide (r.length = 3))) = true := by decide
+theorem A6rows_shape :
+    A6rows.length = 5 ∧ A6rows.all (fun r => decide (r.length = 5)) = true := by decide
+
 /-- The certificate proper: the `5 x 5` coordinate matrix has determinant `7936`. -/
 theorem A6_det : det 5 A6rows = 7936 := by decide
 theorem A6_det_ne_zero : det 5 A6rows ≠ 0 := by decide
@@ -427,6 +459,9 @@ def A6adj : List (List Int) :=
    [280, -208, 1544, -488, 744],
    [5408, -3904, -5664, 6560, -2976],
    [-2520, 1872, 1976, -3544, 1240]]
+
+theorem A6adj_shape :
+    A6adj.length = 5 ∧ A6adj.all (fun r => decide (r.length = 5)) = true := by decide
 
 theorem A6_left_inverse : matMul A6adj A6rows = scaledId 7936 5 := by decide
 
@@ -458,6 +493,7 @@ Each line below prints "does not depend on any axioms": no `sorry`, no `native_d
 #print axioms triadA_proj_agrees
 #print axioms triadB_proj_agrees
 #print axioms triadMatrix_value
+#print axioms triadMatrix_shape
 #print axioms triad_det
 #print axioms triad_det_ne_zero
 #print axioms planar_triad_sums_to_zero
@@ -471,10 +507,13 @@ Each line below prints "does not depend on any axioms": no `sorry`, no `native_d
 #print axioms planarA_enstrophy_conserved
 #print axioms planarB_enstrophy_conserved
 #print axioms planarMatrix_value
+#print axioms planarMatrix_shape
 #print axioms planar_det_zero
 #print axioms triadA_budget
 #print axioms triadB_budget
 #print axioms energy_flux_zero
+#print axioms triadA_hhalf_coeffs
+#print axioms triadB_hhalf_coeffs
 #print axioms triadA_threshold
 #print axioms triadA_above
 #print axioms triadA_below
@@ -490,8 +529,11 @@ Each line below prints "does not depend on any axioms": no `sorry`, no `native_d
 #print axioms A6_symmetric
 #print axioms A6_traceless
 #print axioms A6rows_value
+#print axioms A6mats_shape
+#print axioms A6rows_shape
 #print axioms A6_det
 #print axioms A6_det_ne_zero
+#print axioms A6adj_shape
 #print axioms A6_left_inverse
 
 end NSCert
