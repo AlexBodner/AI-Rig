@@ -26,7 +26,7 @@ After each check, update the tag at the point of use and, where a hypothesis fai
 
 ## Priority 2 — read the two primary sources this project is about
 
-Tao's Mathstodon thread of 2026-09-03 (`https://mathstodon.xyz/@tao/117207849921390904`) is the motivation for the whole write-up and was reconstructed only from search snippets of its first two parts; the remaining parts were never read. Tao's blog post of 2014-02-04 announcing the averaged Navier-Stokes construction was identified by the user as the approach they had in mind and was likewise confirmed only through an abstract snippet. Read both and correct anything in `README.md`, `00_problem.md` item 2.2 and `_extra_context.md` that misrepresents them.
+Tao's Mathstodon thread of 2026-09-03 (`https://mathstodon.xyz/@tao/117207849921390904`) is the motivation for the whole write-up and was reconstructed only from search snippets of its first two parts; the remaining parts were never read. Tao's blog post of 2014-02-04 announcing the averaged Navier-Stokes construction was identified by the user as the approach they had in mind and was likewise confirmed only through an abstract snippet. Read both and correct anything in `README.md` or in item 2.2 of `00_problem.md` that misrepresents them.
 
 ## Priority 3 — extend the machine-checked layer
 

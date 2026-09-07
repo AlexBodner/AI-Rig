@@ -5,8 +5,10 @@ Four independent parts, all printed to stdout:
 Part 1  exact exponent arithmetic behind E1 (Lions) and E5 (the dyadic log budget), in sympy.
 Part 2  the weight-cancellation identity of E6: for every weight h the Gronwall coefficient is g(N_0)^4.
 Part 3  the Osgood ODE y' = phi(t) y g(y)^p: blowup iff int dy/(y g(y)^p) converges.
-Part 4  a Katz-Pavlovic / Cheskidov dyadic shell model with dissipation lambda^{beta n}/g(lambda^n)^2,
-        which realizes the cascade energy budget of E4 (sum_n g(2^n)^{-2}) directly.
+Part 4  Table A: the two divergence conditions sum_m g(2^m)^{-2} and sum_m g(2^m)^{-4} as partial sums.
+        Table B: a Katz-Pavlovic / Cheskidov dyadic shell model with dissipation lambda^{2 beta n/3}/g(lambda^n)^2.
+        The shell model does NOT realize the concentrating cascade of E4: its own criticality is set by its
+        constant-flux (Kolmogorov) balance 2*beta/3, so Table B is an analogy, not a model of E4's budget.
 
 Run:  python3 line_e_frontier.py    (from research/navier-stokes; < 5 minutes, 4 CPUs, no GPU)
 """
@@ -79,6 +81,30 @@ def part1_exponents() -> None:
     subs = {sp.Symbol("a"): aN, sp.Symbol("c"): cN}
     print("   identity residual =", sp.simplify(expr.subs(subs) - nonl))
 
+    # E4 / Breakpoint: the concentrating-cascade drain at a general dissipation order alpha.
+    alpha, j = sp.symbols("alpha j", positive=True)
+    nj = 2**j
+    ej = sp.Symbol("E", positive=True)
+    tj = nj ** sp.Rational(-5, 2) * ej ** sp.Rational(-1, 2)  # transfer time (Bernstein + energy normalization)
+    drain = nj ** (2 * alpha) * ej * tj  # nu * ell(N_j) * E_j * T_j, with nu factored out
+    expo = sp.simplify(sp.log(drain / sp.sqrt(ej)) / sp.log(nj))
+    print("\nE4/Breakpoint: (Delta E_j)/(E_j^{1/2}) / nu =", sp.Pow(2, sp.expand(expo * j)))
+    print("  exponent of N_j in that ratio =", expo, " (from Delta E_j = nu N^{2 alpha - 5/2} E_j^{1/2})")
+    print(
+        "  the geometric series sum_j 2^{(2 alpha - 5/2) j} diverges iff 2 alpha - 5/2 >= 0, i.e. alpha >=",
+        sp.solve(sp.Eq(2 * alpha - sp.Rational(5, 2), 0), alpha),
+    )
+    tot = sp.summation(
+        2 ** ((2 * sp.Rational(1) - sp.Rational(5, 2)) * sp.Symbol("k", integer=True, nonnegative=True)),
+        (sp.Symbol("k", integer=True, nonnegative=True), 0, sp.oo),
+    )
+    print("  at alpha = 1 the total drain is nu *", sp.simplify(sp.radsimp(tot)), "= nu *", float(tot))
+    print("  NOTE: these are scaling relations known only up to unnamed constants, and the four quantities")
+    print("  they involve use only Bernstein, the energy identity and dimensional analysis -- which see")
+    print("  neither pressure nor incompressibility, so the same numbers hold for 3D viscous Burgers and")
+    print("  for swirl-free axisymmetric flow, both globally regular. The budget bounds what the energy")
+    print("  identity can rule out; it predicts nothing about actual blowup (transfer test T2).")
+
 
 # ----------------------------------------------------------------------------------------------
 # Part 2: the weight-cancellation identity of E6
@@ -144,6 +170,16 @@ def part2_weight_cancellation() -> None:
             spread = max(vals) / min(vals)
             print("    " + f"{log10y:>9.0f}" + "".join(f"{v:>15.4g}" for v in vals) + f"{spread:>12.4g}")
         print()
+    print("  CAVEATS, all visible in the table above. (1) 'inf' means g(N_0)^4 left double range: the")
+    print("  frequency SEARCH is in log space (N up to 2^4000), the reported coefficient is not, and the run")
+    print("  emits a RuntimeWarning where that happens. (2) The 'nan' column is g = x^{0.25}, h = N^{-1/2},")
+    print("  where N h(N)/g(N)^2 = N^{1/2}/N^{1/2} is CONSTANT: hypothesis (H) fails, no N_0 exists, and the")
+    print("  row is outside the scheme. (3) the frequency search uses np.maximum.accumulate, which")
+    print("  replaces a non-monotone threshold function by its running maximum and so masks (H) violations")
+    print("  rather than reporting them.")
+    print("  (4) The four columns are compared at a common numeric value of Y, but Y_h for different h are")
+    print("  different functionals of the same field; the table checks the exponent bookkeeping of E6, not")
+    print("  what two schemes would see on one solution.")
     print("  For every log-type g the spread settles to a constant as Y grows (it converges to")
     print("  ((1+a_max)/(1+a_min))^{4 beta} for g = log^beta), so no weight in the family improves the")
     print("  divergence condition. For the power loss g = x^{0.05} the spread grows without bound, but that")
@@ -182,7 +218,11 @@ def part3_osgood() -> None:
         pred = "global" if p <= 1.0 else "blowup"
         sa, sb = (f"{v:.4g}" if np.isfinite(v) else "overflow" for v in out)
         print(f"  {p:>6.2f}{sa:>16}{sb:>16}{integ[0]:>14.5g}{integ[1]:>14.5g}{pred:>12}")
-    print("\n  'overflow' = the stiff solver could not reach the final time (y left double range): finite-time blowup.")
+    print("\n  'overflow' = the stiff solver could not reach that time because y left double range. It is NOT")
+    print("  a blowup diagnostic: p = 1.00 is global by Osgood and still overflows before t = 20, while")
+    print("  p = 1.02 blows up by Osgood and is finite at t = 5. The two regimes have the SAME signature in")
+    print("  the y columns; only the truncated Osgood integral separates them, and that integral is a")
+    print("  numerical restatement of Lemma E3, not independent evidence for it.")
 
 
 # ----------------------------------------------------------------------------------------------
@@ -222,7 +262,8 @@ def part4_shell_model(nu: float = 0.05, t_final: float = 60.0) -> None:
         print(f"  {gname:>14}" + "".join(f"{v:>13.4g}" for v in row))
     print("\n  Reading: S2 diverges for g = 1, log^{1/4}, log^{1/2} and converges for g = log^{1}; S4 diverges")
     print("  only for g = 1 and log^{1/4}. So g = log^{1/2} lies strictly between Tao's theorem and BMR's:")
-    print("  it is the smallest natural example the 2014 improvement covers and the 2009 result does not.")
+    print("  among g = log^beta it is the WEAKEST dissipation (largest beta) that the 2014 improvement")
+    print("  covers and the 2009 result does not; beta in (1/4, 1/2] is the whole covered gap.")
     print("  The columns also show why the frontier is numerically invisible: the divergent sums grow like")
     print("  log M, so separating log^{1/2} from log^{1} needs dyadic ranges of thousands of shells.\n")
 
@@ -234,10 +275,14 @@ def part4_shell_model(nu: float = 0.05, t_final: float = 60.0) -> None:
     print("  balances its dissipation; it is the dyadic analogue of the Lions exponent, and it is NOT 2*alpha")
     print("  = 5/2 (the dyadic model is a different system with a different criticality). Reported: log10 of")
     print("  max_t of the enstrophy sum_n lambda^{2n} a_n^2 as the truncation M is refined, and the growth")
-    print("  rate in decades per shell. A constant-flux inertial range gives exactly log10(lambda^{1/3}) =")
+    print("  rate in decades per shell. WHAT THIS MEASURES: for a perfectly regular constant-flux spectrum")
+    print("  a_n ~ lambda^{-beta n/3} the enstrophy partial sum already diverges with the truncation, at")
     print(
-        f"  {np.log10(LAM ** (1.0 / 3.0)):.4f} decades per shell with no blowup; a larger rate signals an undamped cascade.\n"
+        f"  exactly log10(lambda^{{1/3}}) = {np.log10(LAM ** (1.0 / 3.0)):.4f} decades per shell. So the rate is a SPECTRAL SLOPE"
     )
+    print("  diagnostic, not a blowup diagnostic: a larger rate means a shallower spectrum, and no value of")
+    print("  it decides whether the model blows up. No tolerance/resolution study was run, and it was not")
+    print("  checked whether max_t is attained in the interior of the time interval.\n")
     ms = [10, 14, 18, 22]
     print(f"  {'g':>14}" + "".join(f"{f'M={m}':>10}" for m in ms) + f"{'dec/shell':>11}{'vs inertial':>13}")
     for gname, g in _g_family().items():
@@ -258,9 +303,11 @@ def part4_shell_model(nu: float = 0.05, t_final: float = 60.0) -> None:
             + f"{rate:>11.4f}{rate / np.log10(LAM ** (1 / 3)):>13.2f}"
         )
     print("\n  Reading, and the honest negative part of it: the critical case g = 1 sits at the inertial rate")
-    print("  (ratio ~ 0.9, slightly damped), and the power losses g = x^{0.10}, x^{0.25} sit well above it,")
-    print("  so the model does separate a power loss from criticality at 22 shells. It does NOT separate the")
-    print("  three logarithmic cases from each other or from a power loss: their ratios interpolate smoothly.")
+    print("  (ratio ~ 0.9, slightly damped) and the ratios then increase monotonically with the size of the")
+    print("  loss -- but they do NOT separate power losses from logarithmic ones. The power loss x^{0.05}")
+    print("  (ratio 1.27) sits BETWEEN log^{1/2} (1.22) and log^{1} (1.46), so a row of this table does not")
+    print("  tell a power loss from a logarithm, and it does not separate the three logarithmic cases from")
+    print("  each other either: the ratios interpolate smoothly and track the size of the loss only.")
     print("  That is Table A's resolution statement again. No numerical experiment at any feasible truncation")
     print("  can see the Tao/BMR frontier, so the numerics here support the bookkeeping of E4 and E5 and")
     print("  cannot be evidence for or against the divergence conditions themselves.")
