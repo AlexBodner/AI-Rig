@@ -9,14 +9,21 @@ Five independent checks, all printed as Markdown tables / residuals:
           generic divergence-free U = curl A (A three arbitrary functions).
   Part 3  the discretely-self-similar (tau-dependent) version and the obstruction term.
   Part 4  the surviving self-similar window 2/(d+2) <= beta <= 1/(2 s) and the Lions
-          exponent s = (d+2)/4 in dimension d with dissipation -(-Laplacian)^s.
-  Part 5  numerical check of the integration-by-parts identity used in Part 4.
+          exponent s = (d+2)/4 in dimension d with dissipation -(-Laplacian)^s;
+          beta_nu is solved for, not typed in.
+  Part 4b the piecewise CKN exponent (2 - 1/beta below beta = 1/2, 6 beta - 3 above)
+          obtained by evaluating the CKN quantity in mpmath at two small radii and
+          reading off a log-log slope, with the answer nowhere assumed.
+  Part 5  numerical audit of the three integrations by parts behind the profile L^2
+          identity, with a NON-divergence-free control that separates the one step
+          which does not use div U = 0 from the two steps that do.
 
 Run:  python3 line_b_selfsimilar.py     (all output to stdout, no files written)
 """
 
 from fractions import Fraction
 
+import mpmath as mp
 import numpy as np
 import sympy as sp
 
@@ -271,9 +278,12 @@ def part4_window():
     # profile L^2 identity: nu ||(-Lap)^{sigma/2} U||^2 = ((d+2) beta - 2)/2 ||U||^2
     ident = sp.simplify(d * be / 2 - al)
     beta_E = sp.solve(sp.Eq(e_exp, 0), be)[0]
-    beta_nu = sp.Rational(1, 2) / sig
+    # beta_nu is DERIVED, not typed in: d_t u carries s^{-alpha-1}; -nu (-Lap)^sigma u carries
+    # s^{-alpha-2 sigma beta}; they balance exactly when the two exponents agree.
+    beta_nu = sp.solve(sp.Eq(-al - 1, -al - 2 * sig * be), be)[0]
     print(f"- energy exponent  int |u(t)|^2 dx ~ s^E with E = {e_exp}  (zero at beta = {beta_E})")
     print(f"- profile identity constant  nu ||D^sigma U||^2 = c ||U||^2 with c = {sp.factor(ident)}")
+    print(f"- beta_nu solved from  -alpha-1 = -alpha-2 sigma beta:  beta_nu = {beta_nu}")
     print(f"- beta_E = {beta_E},  beta_nu = 1/(2 sigma) = {beta_nu}")
     cond = sp.simplify(sp.solve(sp.Eq(beta_E, beta_nu), sig)[0])
     print(f"- beta_E = beta_nu  <=>  sigma = {cond}   (Lions exponent; (d+2)/4 = 5/4 at d = 3)\n")
@@ -299,47 +309,142 @@ def part4_window():
             f"| {bv} | {av} | s^({-av}) | s^({sp.Rational(2) * bv - 1}) | s^(-1) "
             f"| s^({(3 * bv - 2) / 2}) | r^({sp.nsimplify(ckn)}) |"
         )
+    ok_ckn = part4_ckn_exponent()
     print("\n(Leray needs ||u||_inf >= c s^(-1/2) and ||grad u||_2 >= c s^(-1/4): both force beta <= 1/2.")
     print(
         " CKN epsilon-regularity needs the last column not to vanish as r -> 0: also beta <= 1/2\n (the CKN exponent is 2 - 1/beta for 1/3 < beta <= 1/2 and 6 beta - 3 for beta >= 1/2;\n  the two agree at beta = 1/2)."
     )
-    print(" Finite energy forces beta >= 2/5.  ESS/NRS kill beta = 1/2.  Surviving: 2/5 <= beta < 1/2.)\n")
-    return True
+    print(" Finite energy forces beta >= 2/5.  ESS/NRS kill beta = 1/2 (exactly self-similar case:")
+    print(" finite energy forces U in L^2, and U in L^2 cap L^inf gives U in L^3, so 2.3 applies).")
+    print(" Asymptotically self-similar window 2/5 <= beta < 1/2: see the notes, class not defined.)\n")
+    return ok_ckn
+
+
+def part4_ckn_exponent():
+    """Derive (not assert) the piecewise CKN exponent by evaluating the CKN quantity itself.
+
+    On Q_r = B_r x (T*-r^2, T*) with u = s^{-alpha} U(x/s^beta), alpha = 1 - beta,
+
+        J(r) := r^{-1} int_0^{r^2} s^{3 beta - 2} F(r s^{-beta}) ds,   F(R) := int_{B_R} |grad U|^2.
+
+    Only two features of F matter: F(R) ~ c R^3 as R -> 0 (|grad U|^2 smooth at the origin) and
+    F bounded as R -> infinity (true for every matched tail |U| ~ |y|^{-alpha/beta} with
+    alpha/beta > 1, i.e. for every beta < 1/2).  A representative such F is F(R) = R^3/(1+R^3).
+    Substituting s = r^2 e^{-t} gives the numerically safe form
+
+        J(r) = r^{6 beta - 3} int_0^infinity e^{-(3 beta - 1) t} F(r^{1 - 2 beta} e^{beta t}) dt,
+
+    which is evaluated in mpmath at two values of r and the exponent read off as a log-log slope.
+    Nothing about the answer 2 - 1/beta / 6 beta - 3 is used in the computation."""
+    print("\n### Part 4b - the CKN exponent computed, not asserted (mpmath)\n")
+    mp.mp.dps = 40
+    r1, r2 = mp.mpf("1e-20"), mp.mpf("1e-24")
+
+    def big_f(rr):
+        return 1 / (1 + rr ** mp.mpf(-3))
+
+    def cknj(bq, rr):
+        a = rr ** (1 - 2 * bq)
+        t_cross = mp.log(1 / a) / bq if a < 1 else mp.mpf(0)
+        pts = [mp.mpf(0), t_cross, mp.inf] if t_cross > 0 else [mp.mpf(0), mp.inf]
+        integ = mp.quad(lambda t: mp.e ** (-(3 * bq - 1) * t) * big_f(a * mp.e ** (bq * t)), pts)
+        return rr ** (6 * bq - 3) * integ
+
+    print("| beta | fitted exponent of the CKN quantity | exact 2 - 1/beta (beta <= 1/2) or 6 beta - 3 |")
+    print("| ---- | ---- | ---- |")
+    ok = True
+    for bq_r in (
+        sp.Rational(17, 50),
+        sp.Rational(7, 20),
+        sp.Rational(2, 5),
+        sp.Rational(9, 20),
+        sp.Rational(1, 2),
+        sp.Rational(11, 20),
+        sp.Rational(3, 5),
+    ):
+        bq = mp.mpf(bq_r.p) / bq_r.q
+        fitted = (mp.log(cknj(bq, r1)) - mp.log(cknj(bq, r2))) / (mp.log(r1) - mp.log(r2))
+        exact = 2 - 1 / bq_r if bq_r <= sp.Rational(1, 2) else 6 * bq_r - 3
+        agree = abs(fitted - mp.mpf(sp.Rational(exact).p) / sp.Rational(exact).q) < mp.mpf("1e-4")
+        ok = ok and bool(agree)
+        print(f"| {bq_r} | {mp.nstr(fitted, 8)} | {exact} = {mp.nstr(mp.mpf(float(exact)), 8)} |")
+    print(f"\n- fitted exponents agree with the piecewise formula to better than 1e-4: {ok}")
+    print("- the crossover at beta = 1/2 is produced by the computation, not imposed on it.\n")
+    return ok
 
 
 # -------------------------------- Part 5: numerical check of the profile L^2 identity
 def part5_numeric():
-    """Check int ((y.grad)U).U dy = -(d/2) int |U|^2 dy numerically in d = 3 for a
-    smooth compactly supported divergence-free U = curl A, and confirm the
-    resulting profile identity constant ((d+2) beta - 2)/2."""
-    print("## Part 5 - numerical check of the integration-by-parts identity (d = 3)\n")
+    """Numerical audit of the three integrations by parts behind the profile L^2 identity
+
+        nu int |grad U|^2 = ( ((d+2) beta - 2)/2 ) int |U|^2 ,   d = 3,
+
+    namely (i) int ((y.grad)U).U = -(d/2) int |U|^2, (ii) int ((U.grad)U).U = 0 and
+    (iii) int grad P . U = 0.  Only (ii) and (iii) use div U = 0; (i) does not, and the
+    control run below shows it holds just as well for a field with div U of order 1.
+    P is the true Navier-Stokes pressure of the field, P = (-Lap)^{-1} d_i d_j (U_i U_j),
+    computed spectrally.  Fields are Gaussian-localized on a box large enough that the
+    periodic spectral operators agree with the whole-space ones to machine precision."""
+    print("## Part 5 - numerical audit of the three integrations by parts (d = 3)\n")
     n, L = 64, 8.0
     ax = np.linspace(-L / 2, L / 2, n, endpoint=False)
     k1 = 2 * np.pi * np.fft.fftfreq(n, d=L / n)
     y1, y2, y3 = np.meshgrid(ax, ax, ax, indexing="ij")
     K = np.meshgrid(k1, k1, k1, indexing="ij")
+    ksq = K[0] ** 2 + K[1] ** 2 + K[2] ** 2
+    inv_ksq = np.where(ksq > 0, 1.0 / np.where(ksq > 0, ksq, 1.0), 0.0)
     r2 = y1**2 + y2**2 + y3**2
     g = np.exp(-r2)
     rng = np.random.default_rng(SEED + 7)
     c = rng.normal(size=(3, 3))
     A = [g * (c[i, 0] * y1 + c[i, 1] * y2 + c[i, 2] * y3 + 0.5 * y1 * y2) for i in range(3)]
+    h = ax[1] - ax[0]
 
     def d_(f, axis):
-        """Spectral derivative on the periodic box (the field is Gaussian-localized)."""
+        """Spectral derivative on the periodic box (every field here is Gaussian-localized)."""
         return np.real(np.fft.ifftn(1j * K[axis] * np.fft.fftn(f)))
 
+    def integral(f):
+        return f.sum() * h**3
+
+    def pressure(F):
+        """P with Lap P = -d_i d_j (F_i F_j), i.e. the Navier-Stokes pressure of F (zero mean)."""
+        rhs = sum(1j * K[i] * 1j * K[j] * np.fft.fftn(F[i] * F[j]) for i in range(3) for j in range(3))
+        return np.real(np.fft.ifftn(rhs * inv_ksq))
+
+    def audit(F, label):
+        """Return the three residuals and their scales for the field F."""
+        dv = d_(F[0], 0) + d_(F[1], 1) + d_(F[2], 2)
+        nsq = sum(F[i] ** 2 for i in range(3))
+        drift = sum(F[i] * (y1 * d_(F[i], 0) + y2 * d_(F[i], 1) + y3 * d_(F[i], 2)) for i in range(3))
+        conv = [sum(F[j] * d_(F[i], j) for j in range(3)) for i in range(3)]
+        i_conv = sum(conv[i] * F[i] for i in range(3))
+        P = pressure(F)
+        i_pres = sum(d_(P, i) * F[i] for i in range(3))
+        rows = [
+            ("(i)  int ((y.grad)U).U + (d/2) int |U|^2", integral(drift) + 1.5 * integral(nsq), 1.5 * integral(nsq)),
+            ("(ii) int ((U.grad)U).U", integral(i_conv), integral(np.abs(i_conv))),
+            ("(iii) int grad P . U", integral(i_pres), integral(np.abs(i_pres))),
+        ]
+        print(f"- {label}: max |div U| on the grid = {np.abs(dv).max():.3e}")
+        for name, res, scale in rows:
+            rel = abs(res) / abs(scale) if scale != 0 else float("inf")
+            print(f"    {name:<42} = {res: .6e}   (scale {abs(scale):.3e}, relative {rel:.3e})")
+        return [abs(res) / abs(scale) for _, res, scale in rows]
+
     U = [d_(A[2], 1) - d_(A[1], 2), d_(A[0], 2) - d_(A[2], 0), d_(A[1], 0) - d_(A[0], 1)]
-    divU = d_(U[0], 0) + d_(U[1], 1) + d_(U[2], 2)
-    h = ax[1] - ax[0]
-    ydotgradU_dot_U = sum(U[i] * (y1 * d_(U[i], 0) + y2 * d_(U[i], 1) + y3 * d_(U[i], 2)) for i in range(3))
-    normsq = sum(U[i] ** 2 for i in range(3))
-    lhs = ydotgradU_dot_U.sum() * h**3
-    rhs = -1.5 * normsq.sum() * h**3
-    print(f"- max |div U| on the grid: {np.abs(divU).max():.3e} (spectral)")
-    print(f"- int ((y.grad)U).U dy   = {lhs: .10f}")
-    print(f"- -(d/2) int |U|^2 dy    = {rhs: .10f}")
-    print(f"- relative difference     = {abs(lhs - rhs) / abs(rhs):.3e}\n")
-    return abs(lhs - rhs) / abs(rhs) < 1e-8
+    rel_good = audit(U, "divergence-free field U = curl A")
+    # control: add a gradient, which destroys div U = 0 but nothing else about the smoothness
+    phi = g * (0.7 * y1 - 1.3 * y2 + 0.4 * y3 * y1)
+    Ubad = [U[i] + d_(phi, i) for i in range(3)]
+    rel_bad = audit(Ubad, "CONTROL, deliberately NOT divergence-free (U + grad phi)")
+    print()
+    print("- reading: (i) holds to machine precision for BOTH fields, so it does not test div U = 0;")
+    print("  (ii) and (iii) hold only for the divergence-free field and fail by an O(1) relative")
+    print("  amount for the control, so they are the two steps of the identity that carry a hypothesis.")
+    ok = max(rel_good) < 1e-8 and rel_bad[0] < 1e-8 and min(rel_bad[1], rel_bad[2]) > 1e-3
+    print(f"- audit passed (three residuals small, control (i) small, control (ii)/(iii) large): {ok}\n")
+    return ok
 
 
 def main():
